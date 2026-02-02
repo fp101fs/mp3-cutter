@@ -7,7 +7,7 @@ interface ToastProps {
   duration?: number
 }
 
-export default function Toast({ message, isVisible, onClose, duration = 3000 }: ToastProps) {
+export default function Toast({ message, isVisible, onClose, duration = 2000 }: ToastProps) {
   useEffect(() => {
     if (isVisible) {
       const timer = setTimeout(() => {
@@ -17,10 +17,12 @@ export default function Toast({ message, isVisible, onClose, duration = 3000 }: 
     }
   }, [isVisible, duration, onClose])
 
-  if (!isVisible) return null
-
   return (
-    <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 transition-opacity duration-300">
+    <div 
+      className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-50 bg-gray-800 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 transition-all duration-300 ${
+        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'
+      }`}
+    >
       <span>{message}</span>
     </div>
   )
