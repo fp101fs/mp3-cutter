@@ -1,75 +1,343 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+
 import WaveSurfer from 'wavesurfer.js'
+
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions'
+
 import { useAudioStore } from '@/store/audioStore'
-import { PlayIcon, PauseIcon } from '@heroicons/react/24/outline'
+
+import { PlayIcon, PauseIcon, PaintBrushIcon } from '@heroicons/react/24/outline'
+
 import '@/app/WaveformEditor.css'
+
 import type { Region } from 'wavesurfer.js/dist/plugins/regions'
+
 import type { Dictionary } from '@/i18n/types'
 
 import Toast from './Toast'
 
-interface WaveformEditorProps {
-  dictionary: Dictionary;
-}
 
-export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
-  const waveformRef = useRef<HTMLDivElement>(null)
-  const wavesurferRef = useRef<WaveSurfer | null>(null)
-  const regionsPluginRef = useRef<RegionsPlugin | null>(null)
-  const currentPartRef = useRef<number>(0)  // 添加一个 ref 来跟踪当前编辑的部分
-  const [duration, setDuration] = useState('00:00:00:00')
-  const [selectedSegment, setSelectedSegment] = useState<Region | null>(null)
-  const [isSaving, setIsSaving] = useState(false)
-  const [saveFormat, setSaveFormat] = useState<'mp3' | 'wav'>('mp3')
-  const [progressPosition, setProgressPosition] = useState(0)
-  const [regionStartPosition, setRegionStartPosition] = useState(0)
-  const [regionEndPosition, setRegionEndPosition] = useState(0)
-  const [zoomLevel, setZoomLevel] = useState(1) // 默认缩放级别 (minPxPerSec)
-  const [showToast, setShowToast] = useState(false)
-  const [toastMessage, setToastMessage] = useState('')
 
-  const audioFile = useAudioStore((state) => state.audioFile)
-  const isPlaying = useAudioStore((state) => state.isPlaying)
-  const setIsPlaying = useAudioStore((state) => state.setIsPlaying)
-  const setSelectedSegmentStore = useAudioStore((state) => state.setSelectedSegment)
-  const clearAudioFile = useAudioStore((state) => state.clearAudioFile)
+interface WaveformTheme {
 
-  // 添加进度位置日志
-  useEffect(() => {
-    console.log('Progress position updated:', progressPosition + '%')
-  }, [progressPosition])
+  id: string
 
-  // 处理缩放
-  const handleZoom = (newZoom: number) => {
-    if (wavesurferRef.current) {
-      // 限制缩放范围 1 - 200
-      const clampedZoom = Math.min(Math.max(newZoom, 1), 200)
-      setZoomLevel(clampedZoom)
-      wavesurferRef.current.zoom(clampedZoom)
-    }
+  label: string
+
+  options: {
+
+    waveColor: string | string[]
+
+    progressColor: string | string[]
+
+    cursorColor: string
+
+    barWidth?: number
+
+    barGap?: number
+
+    barRadius?: number
+
   }
 
-  // 初始化 WaveSurfer
+  background: string
+
+}
+
+
+
+const THEMES: WaveformTheme[] = [
+
+  {
+
+    id: 'default',
+
+    label: 'Default',
+
+    options: {
+
+      waveColor: '#4F46E5',
+
+      progressColor: 'rgba(129, 140, 248, 0.8)',
+
+      cursorColor: '#1E293B',
+
+      barWidth: 2,
+
+      barGap: 3,
+
+      barRadius: 3,
+
+    },
+
+    background: '#F8FAFC'
+
+  },
+
+  {
+
+    id: 'neon',
+
+    label: 'Neon Night',
+
+    options: {
+
+      waveColor: ['#ff0080', '#7928ca'],
+
+      progressColor: ['#00dfd8', '#007cf0'],
+
+      cursorColor: '#ffffff',
+
+      barWidth: 3,
+
+      barGap: 2,
+
+      barRadius: 3,
+
+    },
+
+    background: '#0f172a'
+
+  },
+
+  {
+
+    id: 'sunset',
+
+    label: 'Sunset',
+
+    options: {
+
+      waveColor: ['#FF512F', '#DD2476'],
+
+      progressColor: ['#FFB75E', '#ED8F03'],
+
+      cursorColor: '#4c1d95',
+
+      barWidth: 2,
+
+      barGap: 1,
+
+      barRadius: 2,
+
+    },
+
+    background: '#fff7ed'
+
+  },
+
+  {
+
+    id: 'ocean',
+
+    label: 'Smooth Ocean',
+
+    options: {
+
+      waveColor: ['#2193b0', '#6dd5ed'],
+
+      progressColor: ['#1c92d2', '#f2fcfe'],
+
+      cursorColor: '#ffffff',
+
+      barWidth: 0, // 0 for line mode
+
+      barGap: 0,
+
+      barRadius: 0,
+
+    },
+
+    background: '#0f172a'
+
+  },
+
+  {
+
+    id: 'retro',
+
+    label: 'Retro LCD',
+
+    options: {
+
+      waveColor: '#10b981',
+
+      progressColor: '#34d399',
+
+      cursorColor: '#064e3b',
+
+      barWidth: 4,
+
+      barGap: 1,
+
+      barRadius: 0,
+
+    },
+
+    background: '#022c22'
+
+  }
+
+]
+
+
+
+interface WaveformEditorProps {
+
+  dictionary: Dictionary;
+
+}
+
+
+
+export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
+
+  const waveformRef = useRef<HTMLDivElement>(null)
+
+  const wavesurferRef = useRef<WaveSurfer | null>(null)
+
+  const regionsPluginRef = useRef<RegionsPlugin | null>(null)
+
+  const currentPartRef = useRef<number>(0)  // 添加一个 ref 来跟踪当前编辑的部分
+
+  const [duration, setDuration] = useState('00:00:00:00')
+
+  const [selectedSegment, setSelectedSegment] = useState<Region | null>(null)
+
+  const [isSaving, setIsSaving] = useState(false)
+
+  const [saveFormat, setSaveFormat] = useState<'mp3' | 'wav'>('mp3')
+
+  const [progressPosition, setProgressPosition] = useState(0)
+
+  const [regionStartPosition, setRegionStartPosition] = useState(0)
+
+  const [regionEndPosition, setRegionEndPosition] = useState(0)
+
+  const [zoomLevel, setZoomLevel] = useState(1) // 默认缩放级别 (minPxPerSec)
+
+  const [showToast, setShowToast] = useState(false)
+
+  const [toastMessage, setToastMessage] = useState('')
+
+  const [currentTheme, setCurrentTheme] = useState('default')
+
+
+
+  const audioFile = useAudioStore((state) => state.audioFile)
+
+  const isPlaying = useAudioStore((state) => state.isPlaying)
+
+  const setIsPlaying = useAudioStore((state) => state.setIsPlaying)
+
+  const setSelectedSegmentStore = useAudioStore((state) => state.setSelectedSegment)
+
+  const clearAudioFile = useAudioStore((state) => state.clearAudioFile)
+
+
+
+  // 添加进度位置日志
+
   useEffect(() => {
+
+    console.log('Progress position updated:', progressPosition + '%')
+
+  }, [progressPosition])
+
+
+
+  // 处理主题变更
+
+  useEffect(() => {
+
+    const theme = THEMES.find(t => t.id === currentTheme) || THEMES[0]
+
+    
+
+    if (wavesurferRef.current) {
+
+      wavesurferRef.current.setOptions({
+
+        ...theme.options,
+
+        // Ensure we explicitly set these to undefined/0 if switching from a theme that had them
+
+        barWidth: theme.options.barWidth ?? 0,
+
+        barGap: theme.options.barGap ?? undefined,
+
+        barRadius: theme.options.barRadius ?? undefined,
+
+      })
+
+    }
+
+  }, [currentTheme])
+
+
+
+  // 处理缩放
+
+  const handleZoom = (newZoom: number) => {
+
+    if (wavesurferRef.current) {
+
+      // 限制缩放范围 1 - 200
+
+      const clampedZoom = Math.min(Math.max(newZoom, 1), 200)
+
+      setZoomLevel(clampedZoom)
+
+      wavesurferRef.current.zoom(clampedZoom)
+
+    }
+
+  }
+
+
+
+  // 初始化 WaveSurfer
+
+  useEffect(() => {
+
     if (waveformRef.current && audioFile) {
+
       const regions = RegionsPlugin.create()
+
+      const theme = THEMES.find(t => t.id === currentTheme) || THEMES[0]
+
+      
+
       const wavesurfer = WaveSurfer.create({
+
         container: waveformRef.current,
-        waveColor: '#4F46E5',
-        progressColor: 'rgba(129, 140, 248, 0.8)',
-        cursorColor: '#1E293B',
-        barWidth: 2,
-        barRadius: 3,
+
+        waveColor: theme.options.waveColor,
+
+        progressColor: theme.options.progressColor,
+
+        cursorColor: theme.options.cursorColor,
+
+        barWidth: theme.options.barWidth,
+
+        barRadius: theme.options.barRadius,
+
         cursorWidth: 1,
+
         height: 200,
-        barGap: 3,
+
+        barGap: theme.options.barGap,
+
         minPxPerSec: 1, // 初始缩放
+
         plugins: [regions],
+
         // 允许滚动
+
         autoScroll: true,
+
       })
 
       wavesurferRef.current = wavesurfer
@@ -686,6 +954,16 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
                   className="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                 />
               </div>
+              <div className="flex items-center gap-2 mr-4 border-l border-gray-200 pl-4">
+                <PaintBrushIcon className="w-4 h-4 text-gray-500" />
+                <select
+                  value={currentTheme}
+                  onChange={(e) => setCurrentTheme(e.target.value)}
+                  className="text-sm border-none bg-transparent focus:ring-0 cursor-pointer text-gray-600 outline-none"
+                >
+                  {THEMES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                </select>
+              </div>
               <select
                 value={saveFormat}
                 onChange={(e) => setSaveFormat(e.target.value as 'mp3' | 'wav')}
@@ -720,7 +998,10 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
             </div>
           </div>
           
-          <div className="waveform-container">
+          <div 
+            className="waveform-container"
+            style={{ backgroundColor: THEMES.find(t => t.id === currentTheme)?.background }}
+          >
             <div ref={waveformRef} className="w-full" />
             {/* 播放进度时间气泡 */}
             <div 
