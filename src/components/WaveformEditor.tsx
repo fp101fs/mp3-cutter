@@ -8,7 +8,7 @@ import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions'
 
 import { useAudioStore } from '@/store/audioStore'
 
-import { PlayIcon, PauseIcon, PaintBrushIcon } from '@heroicons/react/24/outline'
+import { PlayIcon, PauseIcon, PaintBrushIcon, SunIcon, MoonIcon } from '@heroicons/react/24/outline'
 
 import '@/app/WaveformEditor.css'
 
@@ -234,6 +234,32 @@ const THEMES: WaveformTheme[] = [
 
     {
 
+      id: 'electric-ocean-light',
+
+      label: 'Electric Ocean (Light)',
+
+      options: {
+
+        waveColor: ['#006064', '#004ba0'],
+
+        progressColor: '#ff0080',
+
+        cursorColor: '#1e293b',
+
+        barWidth: 0,
+
+        barGap: 0,
+
+        barRadius: 0,
+
+      },
+
+      background: '#ffffff'
+
+    },
+
+    {
+
       id: 'cyber-fusion',
 
       label: 'Cyber Fusion',
@@ -300,7 +326,8 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
 
   const [toastMessage, setToastMessage] = useState('')
 
-  const [currentTheme, setCurrentTheme] = useState('default')
+  const [currentTheme, setCurrentTheme] = useState('electric-ocean')
+  const [isDarkMode, setIsDarkMode] = useState(true)
 
 
 
@@ -315,6 +342,32 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
   const clearAudioFile = useAudioStore((state) => state.clearAudioFile)
 
 
+
+  // 处理 Dark Mode 切换
+  const toggleDarkMode = () => {
+    const newMode = !isDarkMode
+    setIsDarkMode(newMode)
+    setCurrentTheme(newMode ? 'electric-ocean' : 'electric-ocean-light')
+  }
+
+  // 计算当前 CSS 变量
+  const uiStyle = isDarkMode ? {
+    '--bg-primary': '#080c14',
+    '--bg-secondary': '#111827',
+    '--text-primary': '#f8fafc',
+    '--text-secondary': '#94a3b8',
+    '--border-color': '#1e293b',
+    '--primary-color': '#38bdf8',
+    '--primary-hover': '#0ea5e9',
+  } as React.CSSProperties : {
+    '--bg-primary': '#ffffff',
+    '--bg-secondary': '#f8fafc',
+    '--text-primary': '#1e293b',
+    '--text-secondary': '#64748b',
+    '--border-color': '#e2e8f0',
+    '--primary-color': '#5E6AD2',
+    '--primary-hover': '#4F46E5',
+  } as React.CSSProperties
 
   // 添加进度位置日志
 
@@ -1001,8 +1054,11 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
     }
   }
 
-  return (
-    <div className="waveform-editor fade-in">
+    return (
+
+  
+
+      <div className="waveform-editor fade-in" style={uiStyle}>
       <Toast 
         message={toastMessage} 
         isVisible={showToast} 
@@ -1015,7 +1071,8 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
             <div className="flex items-center gap-4">
               <button
                 onClick={clearAudioFile}
-                className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 border border-gray-200 rounded-lg hover:border-gray-300 transition-all duration-200"
+                className="px-3 py-1.5 text-sm hover:text-gray-900 border rounded-lg transition-all duration-200"
+                style={{ color: 'var(--text-secondary)', borderColor: 'var(--border-color)' }}
               >
                 {dictionary.upload.newFile}
               </button>
@@ -1032,12 +1089,26 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
                   className="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                 />
               </div>
-              <div className="flex items-center gap-2 mr-4 border-l border-gray-200 pl-4">
-                <PaintBrushIcon className="w-4 h-4 text-gray-500" />
+              <div className="flex items-center gap-2 mr-4 border-l pl-4" style={{ borderColor: 'var(--border-color)' }}>
+                <button
+                  onClick={toggleDarkMode}
+                  className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                >
+                  {isDarkMode ? (
+                    <SunIcon className="w-5 h-5 text-yellow-500" />
+                  ) : (
+                    <MoonIcon className="w-5 h-5 text-gray-500" />
+                  )}
+                </button>
+              </div>
+              <div className="flex items-center gap-2 mr-4 border-l pl-4" style={{ borderColor: 'var(--border-color)' }}>
+                <PaintBrushIcon className="w-4 h-4" style={{ color: 'var(--text-secondary)' }} />
                 <select
                   value={currentTheme}
                   onChange={(e) => setCurrentTheme(e.target.value)}
-                  className="text-sm border-none bg-transparent focus:ring-0 cursor-pointer text-gray-600 outline-none"
+                  className="text-sm border-none bg-transparent focus:ring-0 cursor-pointer outline-none"
+                  style={{ color: 'var(--text-primary)' }}
                 >
                   {THEMES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                 </select>
@@ -1045,7 +1116,8 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
               <select
                 value={saveFormat}
                 onChange={(e) => setSaveFormat(e.target.value as 'mp3' | 'wav')}
-                className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-color focus:border-transparent"
+                className="px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-color focus:border-transparent"
+                style={{ borderColor: 'var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
               >
                 <option value="mp3">MP3</option>
                 <option value="wav">WAV</option>
@@ -1131,6 +1203,7 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
                 onFocus={handleTimeFocus}
                 placeholder="00:00:00:00"
                 className="time-input"
+                style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
               />
               <div className="time-adjust-buttons">
                 <button
@@ -1156,6 +1229,7 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
                 onFocus={handleTimeFocus}
                 placeholder="00:00:00:00"
                 className="time-input"
+                style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
               />
               <div className="time-adjust-buttons">
                 <button
@@ -1178,6 +1252,7 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
         <div 
           className="upload-area" 
           data-dropzone="true"
+          style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
           onDragOver={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -1202,8 +1277,8 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
             }
           }}
         >
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">{dictionary.upload.title}</h2>
-          <p className="mb-4 text-gray-600">{dictionary.upload.dropzone}</p>
+          <h2 className="text-xl font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>{dictionary.upload.title}</h2>
+          <p className="mb-4" style={{ color: 'var(--text-secondary)' }}>{dictionary.upload.dropzone}</p>
           <input
             id="audio-upload"
             type="file"
