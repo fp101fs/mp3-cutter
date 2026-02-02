@@ -170,6 +170,19 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
            // 检查是否点击的是句柄（resize）
            const target = mouseEvent.target as HTMLElement
            
+           // Check if the target is a handle
+           // Handles in WaveSurfer Regions often have a specific class or part
+           const isHandle = target.classList.contains('wavesurfer-handle') || 
+                            (target.getAttribute('part') && target.getAttribute('part')?.includes('handle')) ||
+                            // Also check if the shadow root host or parent is a handle if needed (though usually target is direct)
+                            // WaveSurfer v7 creates elements with 'part' attributes for handles
+                            false
+           
+           if (isHandle) {
+             // If clicking a handle, allow interaction regardless of other handle's visibility
+             return
+           }
+
            // 检查可见性
            const scrollLeft = wavesurfer.getScroll()
            const containerWidth = wavesurfer.getWidth()
