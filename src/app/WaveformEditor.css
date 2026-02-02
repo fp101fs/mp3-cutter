@@ -369,4 +369,83 @@
 /* 波形样式 */
 .wavesurfer-wave {
   background-color: #4F46E5 !important;
+}
+
+/* Smart Trim Button Group */
+.smart-trim-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  padding: 0.125rem;
+  background-color: var(--bg-secondary);
+}
+
+.smart-trim-button {
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.375rem;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  background-color: transparent;
+  transition: var(--transition);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.smart-trim-button:hover:not(:disabled) {
+  background-color: var(--bg-primary);
+  color: var(--primary-color);
+}
+
+.smart-trim-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.smart-trim-button.primary {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.smart-trim-button.primary:hover:not(:disabled) {
+  background-color: var(--primary-hover);
+}
+
+.smart-trim-button.detecting {
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Silence region styling - targets silence-* regions */
+[data-id^="silence-"] {
+  border: 2px dashed rgba(239, 68, 68, 0.5) !important;
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  pointer-events: none;
+}
+
+/* Silence region label */
+.silence-label {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.625rem;
+  color: rgba(239, 68, 68, 0.8);
+  background-color: rgba(255, 255, 255, 0.9);
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  white-space: nowrap;
+  pointer-events: none;
 } 

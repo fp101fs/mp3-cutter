@@ -8,7 +8,10 @@ import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions'
 
 import { useAudioStore } from '@/store/audioStore'
 
-import { PlayIcon, PauseIcon, PaintBrushIcon, SunIcon, MoonIcon } from '@heroicons/react/24/outline'
+import { PlayIcon, PauseIcon, PaintBrushIcon, SunIcon, MoonIcon, SparklesIcon, XMarkIcon } from '@heroicons/react/24/outline'
+
+import { detectSilence, getOptimalTrimPoints, getTotalSilenceDuration, SILENCE_THRESHOLDS } from '@/utils/silenceDetector'
+import type { SilenceRegion, SilenceDetectionResult } from '@/utils/silenceDetector'
 
 import '@/app/WaveformEditor.css'
 
@@ -340,6 +343,17 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
   const setSelectedSegmentStore = useAudioStore((state) => state.setSelectedSegment)
 
   const clearAudioFile = useAudioStore((state) => state.clearAudioFile)
+
+  // Silence detection store
+  const silenceRegions = useAudioStore((state) => state.silenceRegions)
+  const isDetectingSilence = useAudioStore((state) => state.isDetectingSilence)
+  const silenceThreshold = useAudioStore((state) => state.silenceThreshold)
+  const setSilenceRegions = useAudioStore((state) => state.setSilenceRegions)
+  const setIsDetectingSilence = useAudioStore((state) => state.setIsDetectingSilence)
+  const clearSilenceRegions = useAudioStore((state) => state.clearSilenceRegions)
+
+  // Ref to track silence detection result for auto-trim
+  const silenceResultRef = useRef<SilenceDetectionResult | null>(null)
 
 
 
@@ -1036,13 +1050,13 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
   // 微调时间
   const adjustTime = (type: 'start' | 'end', delta: number) => {
     if (!wavesurferRef.current || !regionsPluginRef.current) return
-    
+
     const region = regionsPluginRef.current.getRegions()[0]
     if (!region) return
 
     const currentTime = type === 'start' ? region.start : region.end
     const newTime = Math.max(0, Math.min(wavesurferRef.current.getDuration(), currentTime + delta))
-    
+
     if (type === 'start') {
       if (newTime < region.end) {
         updateRegion(region.id, newTime, region.end)
@@ -1052,6 +1066,108 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
         updateRegion(region.id, region.start, newTime)
       }
     }
+  }
+
+  // Detect silence in the audio
+  const handleDetectSilence = async () => {
+    if (!wavesurferRef.current || !regionsPluginRef.current) return
+
+    setIsDetectingSilence(true)
+
+    try {
+      const audioBuffer = await wavesurferRef.current.getDecodedData()
+      if (!audioBuffer) {
+        setToastMessage('Failed to decode audio data')
+        setShowToast(true)
+        return
+      }
+
+      const thresholdDb = SILENCE_THRESHOLDS[silenceThreshold]
+      const result = detectSilence(audioBuffer, { thresholdDb })
+      silenceResultRef.current = result
+
+      // Clear existing silence regions
+      clearSilenceMarkersFromWaveform()
+
+      // Add new silence regions to waveform
+      result.silences.forEach((silence) => {
+        regionsPluginRef.current?.addRegion({
+          id: silence.id,
+          start: silence.start,
+          end: silence.end,
+          color: 'rgba(239, 68, 68, 0.25)',
+          drag: false,
+          resize: false,
+        })
+      })
+
+      setSilenceRegions(result.silences)
+
+      if (result.silences.length > 0) {
+        const totalSilence = getTotalSilenceDuration(result.silences)
+        setToastMessage(`Found ${result.silences.length} silence region${result.silences.length > 1 ? 's' : ''} (${totalSilence.toFixed(1)}s total)`)
+      } else {
+        setToastMessage('No silence detected')
+      }
+      setShowToast(true)
+    } catch (error) {
+      console.error('Error detecting silence:', error)
+      setToastMessage('Error detecting silence')
+      setShowToast(true)
+    } finally {
+      setIsDetectingSilence(false)
+    }
+  }
+
+  // Auto-trim to remove leading/trailing silence
+  const handleAutoTrim = () => {
+    if (!wavesurferRef.current || !regionsPluginRef.current || !silenceResultRef.current) return
+
+    const duration = wavesurferRef.current.getDuration()
+    const result = silenceResultRef.current
+
+    const { start, end } = getOptimalTrimPoints(result, duration)
+
+    // Find and update the selection region
+    const regions = regionsPluginRef.current.getRegions()
+    const selectionRegion = regions.find(r => r.id === 'selection')
+
+    if (selectionRegion) {
+      // Calculate how much silence is being trimmed
+      const leadingTrim = result.leadingSilence ? result.leadingSilence.end : 0
+      const trailingTrim = result.trailingSilence ? duration - result.trailingSilence.start : 0
+      const totalTrimmed = leadingTrim + trailingTrim
+
+      updateRegion('selection', start, end)
+
+      if (totalTrimmed > 0) {
+        setToastMessage(`Trimmed ${totalTrimmed.toFixed(1)}s of silence`)
+      } else {
+        setToastMessage('No leading/trailing silence to trim')
+      }
+      setShowToast(true)
+    }
+  }
+
+  // Clear silence markers from waveform
+  const clearSilenceMarkersFromWaveform = () => {
+    if (!regionsPluginRef.current) return
+
+    const regions = regionsPluginRef.current.getRegions()
+    regions.forEach(region => {
+      if (region.id.startsWith('silence-')) {
+        region.remove()
+      }
+    })
+  }
+
+  // Clear all silence markers
+  const handleClearSilenceMarkers = () => {
+    clearSilenceMarkersFromWaveform()
+    clearSilenceRegions()
+    silenceResultRef.current = null
+    setToastMessage('Silence markers cleared')
+    setShowToast(true)
   }
 
     return (
@@ -1112,6 +1228,35 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
                 >
                   {THEMES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                 </select>
+              </div>
+              {/* Smart Trim Button Group */}
+              <div className="smart-trim-group border-l pl-4 ml-4" style={{ borderColor: 'var(--border-color)' }}>
+                <button
+                  onClick={handleDetectSilence}
+                  disabled={isDetectingSilence}
+                  className={`smart-trim-button primary ${isDetectingSilence ? 'detecting' : ''}`}
+                  title="Detect silent regions in the audio"
+                >
+                  <SparklesIcon className="w-4 h-4" />
+                  {isDetectingSilence ? 'Detecting...' : 'Smart Trim'}
+                </button>
+                <button
+                  onClick={handleAutoTrim}
+                  disabled={silenceRegions.length === 0}
+                  className="smart-trim-button"
+                  title="Auto-trim leading and trailing silence"
+                >
+                  Auto Trim
+                </button>
+                {silenceRegions.length > 0 && (
+                  <button
+                    onClick={handleClearSilenceMarkers}
+                    className="smart-trim-button"
+                    title="Clear silence markers"
+                  >
+                    <XMarkIcon className="w-4 h-4" />
+                  </button>
+                )}
               </div>
               <select
                 value={saveFormat}
