@@ -114,7 +114,7 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
 
 
       // 更新区域位置和时间显示
-      const updateRegionPositions = (region: Region, isDragEnd: boolean = false) => {
+      const updateRegionPositions = (region: Region) => {
         const duration = wavesurfer.getDuration()
         if (!duration) {
           console.warn('Duration is not available yet')
@@ -138,23 +138,20 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
         setRegionStartPosition(startPos)
         setRegionEndPosition(endPos)
 
-        // 仅在拖拽结束或非拖拽更新时检查播放头位置
-        // 避免在拖拽过程中频繁跳转导致闪烁
-        if (isDragEnd) {
-          const currentTime = wavesurfer.getCurrentTime()
-          if (currentTime < region.start || currentTime > region.end) {
-            // 计算到开始和结束位置的距离
-            const distanceToStart = Math.abs(currentTime - region.start)
-            const distanceToEnd = Math.abs(currentTime - region.end)
-            
-            // 移动到最近的边界
-            const newTime = distanceToStart < distanceToEnd ? region.start : region.end
-            wavesurfer.setTime(newTime)
-            
-            // 更新进度气泡位置和时间显示
-            const newProgress = (newTime / duration) * 100
-            setProgressPosition(newProgress)
-          }
+        // 检查当前播放位置是否在区域内，如果不在则调整到最近的边界
+        const currentTime = wavesurfer.getCurrentTime()
+        if (currentTime < region.start || currentTime > region.end) {
+          // 计算到开始和结束位置的距离
+          const distanceToStart = Math.abs(currentTime - region.start)
+          const distanceToEnd = Math.abs(currentTime - region.end)
+          
+          // 移动到最近的边界
+          const newTime = distanceToStart < distanceToEnd ? region.start : region.end
+          wavesurfer.setTime(newTime)
+          
+          // 更新进度气泡位置和时间显示
+          const newProgress = (newTime / duration) * 100
+          setProgressPosition(newProgress)
         }
       }
 
@@ -181,7 +178,7 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
 
         // 确保在区域创建后更新位置
         if (region) {
-          updateRegionPositions(region, true)
+          updateRegionPositions(region)
         }
       })
 
@@ -205,15 +202,15 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
 
       // 监听区域更新事件
       regions.on('region-update', (region: Region) => {
-        updateRegionPositions(region, false)
+        updateRegionPositions(region)
       })
 
       regions.on('region-updated', (region: Region) => {
-        updateRegionPositions(region, true)
+        updateRegionPositions(region)
       })
 
       regions.on('region-created', (region: Region) => {
-        updateRegionPositions(region, true)
+        updateRegionPositions(region)
       })
 
       // 加载音频文件
