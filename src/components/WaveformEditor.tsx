@@ -18,14 +18,15 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
   const wavesurferRef = useRef<WaveSurfer | null>(null)
   const regionsPluginRef = useRef<RegionsPlugin | null>(null)
   const currentPartRef = useRef<number>(0)  // 添加一个 ref 来跟踪当前编辑的部分
-  const [duration, setDuration] = useState('00:00')
+  const [duration, setDuration] = useState('00:00:00:00')
   const [selectedSegment, setSelectedSegment] = useState<Region | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [saveFormat, setSaveFormat] = useState<'mp3' | 'wav'>('mp3')
   const [progressPosition, setProgressPosition] = useState(0)
   const [regionStartPosition, setRegionStartPosition] = useState(0)
   const [regionEndPosition, setRegionEndPosition] = useState(0)
-  
+  const [zoomLevel, setZoomLevel] = useState(1) // 默认缩放级别 (minPxPerSec)
+
   const audioFile = useAudioStore((state) => state.audioFile)
   const isPlaying = useAudioStore((state) => state.isPlaying)
   const setIsPlaying = useAudioStore((state) => state.setIsPlaying)
@@ -36,6 +37,16 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
   useEffect(() => {
     console.log('Progress position updated:', progressPosition + '%')
   }, [progressPosition])
+
+  // 处理缩放
+  const handleZoom = (newZoom: number) => {
+    if (wavesurferRef.current) {
+      // 限制缩放范围 1 - 200
+      const clampedZoom = Math.min(Math.max(newZoom, 1), 200)
+      setZoomLevel(clampedZoom)
+      wavesurferRef.current.zoom(clampedZoom)
+    }
+  }
 
   // 初始化 WaveSurfer
   useEffect(() => {
@@ -51,11 +62,56 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
         cursorWidth: 1,
         height: 200,
         barGap: 3,
-        plugins: [regions]
+        minPxPerSec: 1, // 初始缩放
+        plugins: [regions],
+        // 允许滚动
+        autoScroll: true,
       })
 
       wavesurferRef.current = wavesurfer
       regionsPluginRef.current = regions
+
+      // 添加滚轮/捏合缩放支持
+      const container = waveformRef.current
+      
+      const handleWheel = (e: WheelEvent) => {
+        // 防止页面滚动
+        if (Math.abs(e.deltaY) > 0 && e.ctrlKey) {
+            e.preventDefault()
+        }
+        
+        // 触控板双指缩放通常表现为 ctrlKey + wheel
+        // 或者我们自定义垂直滚动为缩放 (用户要求的 "swipe-up to zoom")
+        // 为了体验更好，我们可以检测是否是水平滚动（通常是时间轴移动）还是垂直滚动
+        
+        // 策略：如果按住 Ctrl 或 Meta 键，或者纯垂直滚动且幅度较大，则视为缩放
+        // 注意：触控板的双指捏合在某些浏览器/系统上会触发 wheel + ctrlKey
+        
+        if (e.ctrlKey || Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+           // 这是一个垂直滚动或者捏合手势
+           e.preventDefault()
+           
+           // 计算新的缩放值
+           // deltaY > 0 是向下滚动/缩小，< 0 是向上滚动/放大
+           const delta = -e.deltaY
+           const zoomFactor = 0.05 // 缩放灵敏度
+           
+           // 使用函数式更新获取最新值有点麻烦，这里直接用 ref 或者 store 也可以，
+           // 但我们可以直接从 wavesurfer 实例获取当前 zoom
+           // 不过为了保持 react state 同步，我们需要小心。
+           // 这里我们简单地基于当前 state 计算
+           
+           setZoomLevel(prev => {
+             const newZoom = prev * (1 + delta * 0.01)
+             const clamped = Math.min(Math.max(newZoom, 1), 200)
+             wavesurfer.zoom(clamped)
+             return clamped
+           })
+        }
+      }
+
+      container.addEventListener('wheel', handleWheel, { passive: false })
+
 
       // 更新区域位置和时间显示
       const updateRegionPositions = (region: Region) => {
@@ -131,7 +187,7 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
         const duration = wavesurfer.getDuration()
         // 更新进度位置
         const progress = (currentTime / duration) * 100
-        console.log('Audio process - Current Time:', currentTime, 'Progress:', progress + '%')
+        // console.log('Audio process - Current Time:', currentTime, 'Progress:', progress + '%')
         setProgressPosition(progress)
       })
 
@@ -162,6 +218,7 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
       wavesurfer.load(audioUrl)
 
       return () => {
+        container.removeEventListener('wheel', handleWheel)
         URL.revokeObjectURL(audioUrl)
         regions.destroy()
         wavesurfer.destroy()
@@ -352,17 +409,24 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
     }
   }
 
-  // 格式化时间为 HH:mm:ss
+  // 格式化时间为 HH:mm:ss:cs
   const formatTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600)
     const minutes = Math.floor((seconds % 3600) / 60)
     const remainingSeconds = Math.floor(seconds % 60)
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`
+    const centiseconds = Math.floor((seconds % 1) * 100)
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}:${centiseconds.toString().padStart(2, '0')}`
   }
 
   // 解析时间字符串为秒数
   const parseTimeString = (timeString: string): number => {
-    const [hours, minutes, seconds] = timeString.split(':').map(Number)
+    const parts = timeString.split(':').map(Number)
+    if (parts.length === 4) {
+      const [hours, minutes, seconds, centiseconds] = parts
+      return hours * 3600 + minutes * 60 + seconds + centiseconds / 100
+    }
+    // Fallback for older format if needed
+    const [hours, minutes, seconds] = parts
     return hours * 3600 + minutes * 60 + seconds
   }
 
@@ -371,9 +435,11 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
     const input = e.currentTarget
     const selectionStart = input.selectionStart || 0
 
-    // 确定当前选中的部分（时/分/秒）
+    // 确定当前选中的部分（时/分/秒/毫秒）
     let currentPart: number
-    if (selectionStart >= 6) {
+    if (selectionStart >= 9) {
+      currentPart = 3 // centiseconds
+    } else if (selectionStart >= 6) {
       currentPart = 2 // seconds
     } else if (selectionStart >= 3) {
       currentPart = 1 // minutes
@@ -385,38 +451,38 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
     currentPartRef.current = currentPart
 
     // 获取当前部分的起始位置（考虑冒号）
-    const partStartPos = currentPartRef.current === 0 ? 0 : currentPartRef.current === 1 ? 3 : 6
+    const partStartPos = currentPartRef.current === 0 ? 0 : currentPartRef.current === 1 ? 3 : currentPartRef.current === 2 ? 6 : 9
 
     switch (e.key) {
       case 'ArrowLeft':
         e.preventDefault()
         if (currentPartRef.current > 0) {
           currentPartRef.current -= 1
-          const newPos = currentPartRef.current === 0 ? 0 : 3
+          const newPos = currentPartRef.current === 0 ? 0 : currentPartRef.current === 1 ? 3 : currentPartRef.current === 2 ? 6 : 9
           input.setSelectionRange(newPos, newPos + 2)
         }
         break
       case 'ArrowRight':
         e.preventDefault()
-        if (currentPartRef.current < 2) {
+        if (currentPartRef.current < 3) {
           currentPartRef.current += 1
-          const newPos = currentPartRef.current === 1 ? 3 : 6
+          const newPos = currentPartRef.current === 1 ? 3 : currentPartRef.current === 2 ? 6 : 9
           input.setSelectionRange(newPos, newPos + 2)
         }
         break
       case 'Tab':
         e.preventDefault()
         currentPartRef.current = e.shiftKey ? 
-          (currentPartRef.current === 0 ? 2 : currentPartRef.current - 1) : 
-          (currentPartRef.current === 2 ? 0 : currentPartRef.current + 1)
-        const newPos = currentPartRef.current === 0 ? 0 : currentPartRef.current === 1 ? 3 : 6
+          (currentPartRef.current === 0 ? 3 : currentPartRef.current - 1) : 
+          (currentPartRef.current === 3 ? 0 : currentPartRef.current + 1)
+        const newPos = currentPartRef.current === 0 ? 0 : currentPartRef.current === 1 ? 3 : currentPartRef.current === 2 ? 6 : 9
         input.setSelectionRange(newPos, newPos + 2)
         break
       case 'Backspace':
       case 'Delete':
         e.preventDefault()
         const newValue = input.value.slice(0, partStartPos) + '00' + input.value.slice(partStartPos + 2)
-        const type = input.placeholder === '00:00:00' ? 'start' : 'end'
+        const type = input.placeholder === '00:00:00:00' ? 'start' : 'end'
         handleTimeInput(type, newValue)
         input.setSelectionRange(partStartPos, partStartPos + 2)
         break
@@ -434,7 +500,7 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
     if (!region) return
 
     // 验证时间格式
-    if (!/^\d{2}:\d{2}:\d{2}$/.test(value)) {
+    if (!/^\d{2}:\d{2}:\d{2}:\d{2}$/.test(value)) {
       console.log('时间格式无效')
       return
     }
@@ -488,7 +554,10 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
     const selectionStart = e.target.selectionStart || 0
     
     // 根据光标位置确定当前部分
-    if (selectionStart >= 6) {
+    if (selectionStart >= 9) {
+      currentPartRef.current = 3 // centiseconds
+      e.target.setSelectionRange(9, 11)
+    } else if (selectionStart >= 6) {
       currentPartRef.current = 2 // seconds
       e.target.setSelectionRange(6, 8)
     } else if (selectionStart >= 3) {
@@ -536,6 +605,17 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
               </button>
             </div>
             <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 mr-4">
+                <span className="text-sm text-gray-500">Zoom</span>
+                <input
+                  type="range"
+                  min="1"
+                  max="200"
+                  value={zoomLevel}
+                  onChange={(e) => handleZoom(Number(e.target.value))}
+                  className="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                />
+              </div>
               <select
                 value={saveFormat}
                 onChange={(e) => setSaveFormat(e.target.value as 'mp3' | 'wav')}
@@ -589,7 +669,7 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
               style={{ left: `${regionStartPosition}%` }}
             >
               <div className="time-bubble-content">
-                {selectedSegment ? formatTime(selectedSegment.start) : '00:00:00'}
+                {selectedSegment ? formatTime(selectedSegment.start) : '00:00:00:00'}
               </div>
               <div className="time-bubble-arrow"></div>
             </div>
@@ -616,11 +696,11 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
             <div className="time-input-group">
               <input
                 type="text"
-                value={selectedSegment ? formatTime(selectedSegment.start) : '00:00:00'}
+                value={selectedSegment ? formatTime(selectedSegment.start) : '00:00:00:00'}
                 onChange={(e) => handleTimeInput('start', e.target.value)}
                 onKeyDown={handleTimeKeyDown}
                 onFocus={handleTimeFocus}
-                placeholder="00:00:00"
+                placeholder="00:00:00:00"
                 className="time-input"
               />
               <div className="time-adjust-buttons">
@@ -645,7 +725,7 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
                 onChange={(e) => handleTimeInput('end', e.target.value)}
                 onKeyDown={handleTimeKeyDown}
                 onFocus={handleTimeFocus}
-                placeholder="00:00:00"
+                placeholder="00:00:00:00"
                 className="time-input"
               />
               <div className="time-adjust-buttons">
