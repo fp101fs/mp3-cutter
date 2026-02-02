@@ -10,7 +10,7 @@ import { useAudioStore } from '@/store/audioStore'
 
 import { PlayIcon, PauseIcon, PaintBrushIcon, SunIcon, MoonIcon, SparklesIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
-import { detectSilence, getOptimalTrimPoints, getTotalSilenceDuration, SILENCE_THRESHOLDS } from '@/utils/silenceDetector'
+import { detectSilence, getOptimalTrimPoints, getTotalSilenceDuration } from '@/utils/silenceDetector'
 import type { SilenceRegion, SilenceDetectionResult } from '@/utils/silenceDetector'
 
 import '@/app/WaveformEditor.css'
@@ -1082,8 +1082,7 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
         return
       }
 
-      const thresholdDb = SILENCE_THRESHOLDS[silenceThreshold]
-      const result = detectSilence(audioBuffer, { thresholdDb })
+      const result = await detectSilence(audioBuffer)
       silenceResultRef.current = result
 
       // Clear existing silence regions
@@ -1238,7 +1237,7 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
                   title="Detect silent regions in the audio"
                 >
                   <SparklesIcon className="w-4 h-4" />
-                  {isDetectingSilence ? 'Detecting...' : 'Smart Trim'}
+                  {isDetectingSilence ? 'Analyzing...' : 'Smart Trim'}
                 </button>
                 <button
                   onClick={handleAutoTrim}

@@ -1,18 +1,15 @@
 /**
  * Silence Detection Utility
- * Uses RMS (Root Mean Square) energy analysis to detect silent regions in audio.
+ * Uses Silero VAD (Voice Activity Detection) via @ricky0123/vad-web for ML-based speech detection.
+ * Silence is inferred from gaps between detected speech segments.
  */
+
+import { NonRealTimeVAD } from '@ricky0123/vad-web';
 
 export interface SilenceRegion {
   id: string;
   start: number;  // seconds
   end: number;    // seconds
-}
-
-export interface SilenceDetectionOptions {
-  thresholdDb?: number;      // default: -40
-  minDurationMs?: number;    // default: 300
-  windowSizeMs?: number;     // default: 50
 }
 
 export interface SilenceDetectionResult {
@@ -21,112 +18,148 @@ export interface SilenceDetectionResult {
   trailingSilence: SilenceRegion | null;
 }
 
-// Threshold presets
+// Threshold presets (kept for API compatibility, but not used by VAD)
 export const SILENCE_THRESHOLDS = {
-  quiet: -50,    // Very sensitive - detects quieter sounds as silence
-  default: -40,  // Standard threshold for most audio
-  moderate: -30, // Less sensitive - only detects very quiet sections
+  quiet: -50,
+  default: -40,
+  moderate: -30,
 } as const;
 
 export type SilenceThresholdPreset = keyof typeof SILENCE_THRESHOLDS;
 
+// Minimum silence duration in seconds to report
+const MIN_SILENCE_DURATION = 0.3;
+
 /**
- * Detect silent regions in an AudioBuffer using RMS energy analysis.
- *
- * @param audioBuffer - The decoded audio buffer to analyze
- * @param options - Detection options (threshold, min duration, window size)
- * @returns Object containing array of silence regions and leading/trailing silence info
+ * Resample an AudioBuffer to 16kHz mono Float32Array (required by Silero VAD)
  */
-export function detectSilence(
-  audioBuffer: AudioBuffer,
-  options: SilenceDetectionOptions = {}
-): SilenceDetectionResult {
-  const {
-    thresholdDb = SILENCE_THRESHOLDS.default,
-    minDurationMs = 300,
-    windowSizeMs = 50,
-  } = options;
-
-  const sampleRate = audioBuffer.sampleRate;
-  const windowSize = Math.floor((windowSizeMs / 1000) * sampleRate);
-  const minSilenceSamples = Math.floor((minDurationMs / 1000) * sampleRate);
-
-  // Convert dB threshold to linear amplitude
-  // dB = 20 * log10(amplitude), so amplitude = 10^(dB/20)
-  const threshold = Math.pow(10, thresholdDb / 20);
-
-  // Mix down to mono for analysis (average all channels)
+async function resampleTo16kHz(audioBuffer: AudioBuffer): Promise<Float32Array> {
+  const targetSampleRate = 16000;
   const numChannels = audioBuffer.numberOfChannels;
-  const length = audioBuffer.length;
-  const monoData = new Float32Array(length);
+  const duration = audioBuffer.duration;
 
-  for (let i = 0; i < length; i++) {
-    let sum = 0;
-    for (let ch = 0; ch < numChannels; ch++) {
-      sum += audioBuffer.getChannelData(ch)[i];
-    }
-    monoData[i] = sum / numChannels;
-  }
+  // Create offline context for resampling
+  const offlineCtx = new OfflineAudioContext(
+    1, // mono output
+    Math.ceil(duration * targetSampleRate),
+    targetSampleRate
+  );
 
-  // Analyze audio in windows and mark silent regions
-  const numWindows = Math.ceil(length / windowSize);
-  const isSilent: boolean[] = new Array(numWindows);
+  // Create buffer source
+  const source = offlineCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(offlineCtx.destination);
+  source.start(0);
 
-  for (let w = 0; w < numWindows; w++) {
-    const startSample = w * windowSize;
-    const endSample = Math.min(startSample + windowSize, length);
-    const windowLength = endSample - startSample;
+  // Render
+  const renderedBuffer = await offlineCtx.startRendering();
+  return renderedBuffer.getChannelData(0);
+}
 
-    // Calculate RMS for this window
-    let sumSquares = 0;
-    for (let i = startSample; i < endSample; i++) {
-      sumSquares += monoData[i] * monoData[i];
-    }
-    const rms = Math.sqrt(sumSquares / windowLength);
-
-    // Mark as silent if RMS is below threshold
-    isSilent[w] = rms < threshold;
-  }
-
-  // Convert silent windows to time regions
+/**
+ * Convert speech segments to silence segments (gaps between speech)
+ */
+function speechToSilence(
+  speechSegments: Array<{ start: number; end: number }>,
+  duration: number,
+  minSilenceDuration: number = MIN_SILENCE_DURATION
+): SilenceRegion[] {
   const silences: SilenceRegion[] = [];
-  let silenceStartWindow: number | null = null;
   let regionCounter = 0;
 
-  for (let w = 0; w <= numWindows; w++) {
-    const isCurrentSilent = w < numWindows ? isSilent[w] : false;
+  // Sort speech segments by start time
+  const sorted = [...speechSegments].sort((a, b) => a.start - b.start);
 
-    if (isCurrentSilent && silenceStartWindow === null) {
-      // Start of a silence region
-      silenceStartWindow = w;
-    } else if (!isCurrentSilent && silenceStartWindow !== null) {
-      // End of a silence region
-      const startTime = (silenceStartWindow * windowSize) / sampleRate;
-      const endTime = Math.min((w * windowSize) / sampleRate, audioBuffer.duration);
-      const durationMs = (endTime - startTime) * 1000;
+  // Check for leading silence (before first speech)
+  if (sorted.length === 0) {
+    // Entire audio is silence
+    if (duration >= minSilenceDuration) {
+      silences.push({
+        id: `silence-${regionCounter++}`,
+        start: 0,
+        end: duration,
+      });
+    }
+    return silences;
+  }
 
-      // Only include if duration meets minimum threshold
-      if (durationMs >= minDurationMs) {
-        silences.push({
-          id: `silence-${regionCounter++}`,
-          start: startTime,
-          end: endTime,
-        });
-      }
+  // Leading silence
+  if (sorted[0].start >= minSilenceDuration) {
+    silences.push({
+      id: `silence-${regionCounter++}`,
+      start: 0,
+      end: sorted[0].start,
+    });
+  }
 
-      silenceStartWindow = null;
+  // Gaps between speech segments
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const gapStart = sorted[i].end;
+    const gapEnd = sorted[i + 1].start;
+    const gapDuration = gapEnd - gapStart;
+
+    if (gapDuration >= minSilenceDuration) {
+      silences.push({
+        id: `silence-${regionCounter++}`,
+        start: gapStart,
+        end: gapEnd,
+      });
     }
   }
 
-  // Identify leading and trailing silence
-  const leadingSilence = silences.length > 0 && silences[0].start < 0.01
-    ? silences[0]
-    : null;
+  // Trailing silence (after last speech)
+  const lastSpeechEnd = sorted[sorted.length - 1].end;
+  if (duration - lastSpeechEnd >= minSilenceDuration) {
+    silences.push({
+      id: `silence-${regionCounter++}`,
+      start: lastSpeechEnd,
+      end: duration,
+    });
+  }
 
-  const trailingSilence = silences.length > 0 &&
+  return silences;
+}
+
+/**
+ * Detect silent regions in an AudioBuffer using Silero VAD.
+ * VAD detects speech segments, and we invert to find silence.
+ *
+ * @param audioBuffer - The decoded audio buffer to analyze
+ * @returns Object containing array of silence regions and leading/trailing silence info
+ */
+export async function detectSilence(
+  audioBuffer: AudioBuffer
+): Promise<SilenceDetectionResult> {
+  // Resample to 16kHz mono (VAD requirement)
+  const samples = await resampleTo16kHz(audioBuffer);
+
+  // Initialize VAD (model loaded from CDN automatically)
+  const vad = await NonRealTimeVAD.new({
+    // Use defaults - model is fetched from CDN
+  });
+
+  // Run detection - collects speech segments
+  const speechSegments: Array<{ start: number; end: number }> = [];
+
+  for await (const segment of vad.run(samples, 16000)) {
+    speechSegments.push({
+      start: segment.start / 16000, // Convert samples to seconds
+      end: segment.end / 16000,
+    });
+  }
+
+  // Convert speech segments to silence segments
+  const silences = speechToSilence(speechSegments, audioBuffer.duration);
+
+  // Identify leading and trailing silence
+  const leadingSilence =
+    silences.length > 0 && silences[0].start < 0.01 ? silences[0] : null;
+
+  const trailingSilence =
+    silences.length > 0 &&
     Math.abs(silences[silences.length - 1].end - audioBuffer.duration) < 0.01
-    ? silences[silences.length - 1]
-    : null;
+      ? silences[silences.length - 1]
+      : null;
 
   return {
     silences,
