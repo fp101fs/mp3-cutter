@@ -163,26 +163,12 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
       const attachRegionListeners = (region: Region) => {
         if (!region.element) return
 
-        const handleMouseDown = (e: MouseEvent) => {
+        const handleMouseDown = (e: Event) => {
+           // Cast event to PointerEvent or MouseEvent to access target
+           const mouseEvent = e as MouseEvent
+           
            // 检查是否点击的是句柄（resize）
-           // WaveSurfer regions handles usually don't have a specific class in the event target if using shadow DOM or parts
-           // But we can check if the target is exactly the region element (which implies dragging the body)
-           // Or check if it's NOT a handle.
-           // 简单策略：如果点击的是 region 元素本身，通常是拖拽。如果点击的是子元素（句柄），通常是 resize。
-           
-           // 注意：Event target 可能是 region 内部的某个元素
-           const target = e.target as HTMLElement
-           
-           // 假设句柄会有特定的标识，或者如果 target === region.element，那就是 body drag
-           // 这是一个假设，可能需要根据具体 DOM 结构调整。
-           // 如果 region.element 包含 handle 元素，点击 handle 时 target 会是 handle
-           
-           // 检查是否是拖拽操作 (点击的是区域主体)
-           // 我们假设非句柄点击就是拖拽
-           // 句柄通常在左右两侧
-           
-           // 更可靠的方法：检查位置
-           // 如果 handles 不可见，我们无论点击哪里（除了可见部分）都可能是问题，但主要是拖拽移动会导致问题
+           const target = mouseEvent.target as HTMLElement
            
            // 检查可见性
            const scrollLeft = wavesurfer.getScroll()
@@ -192,7 +178,6 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
            const totalWidth = wrapper.scrollWidth
            
            // 计算区域在像素中的位置
-           // 注意：getWrapper().scrollWidth 可能包含缩放后的宽度
            const pxPerSec = totalWidth / duration
            const startPx = region.start * pxPerSec
            const endPx = region.end * pxPerSec
@@ -202,46 +187,22 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
            const isStartVisible = startPx >= scrollLeft - tolerance && startPx <= scrollLeft + containerWidth + tolerance
            const isEndVisible = endPx >= scrollLeft - tolerance && endPx <= scrollLeft + containerWidth + tolerance
            
-           // 如果任意一个句柄不可见，并且用户试图拖拽（这里简化为点击区域，因为我们无法轻易区分点击意图，
-           // 但通常点击区域中间就是为了拖拽）
            if (!isStartVisible || !isEndVisible) {
-             // 进一步检查是否点击了可见的句柄（如果只有一个可见）
-             // 如果 target 是 handle，允许 resize
-             // 但是很难通过 target 判断 handle，因为 WaveSurfer 渲染方式
-             // 我们可以依赖上面的逻辑：如果句柄不可见，你根本点不到它（除非它在屏幕边缘刚好露出一半？）
-             // 如果你点到了不可见的句柄... 那是不可能的。
-             // 如果你点到了可见的句柄 -> 它是可见的 -> 我们允许吗？
-             // 如果 start 可见，end 不可见。我点击 start handle。 isStartVisible = true.
-             // 下面的逻辑会阻止。这可能太严格了。
-             // 应该只在 "点击了区域主体" (即 move) 时阻止。
-             
-             // 尝试检测是否是 resize
-             // 如果 target 有 data-resize 属性或者特定的类名
-             // WaveSurfer v7 regions handles have `data-region-handle` attribute or similar?
-             // 查看 CSS: ::part(region-handle-left)
-             
-             // 如果我们无法完美区分，就统一提示。用户说 "clicks inside the light-purple selection area"
-             // 这通常意味着主体。
-             
-             // 让我们尝试通过 target 是否包含 'handle' 字符串来判断（这是一个常见的命名约定）
-             // 或者查看 CSS cursor? 
+             // 检查是否点击了具体的 handle 元素（如果有办法区分）
+             // 简单的防御：如果主要目的是防止移动主体，拦截事件是有效的。
              
              setToastMessage('Zoom Out to move the cut selection area')
              setShowToast(true)
              
-             // 阻止默认行为以防止拖拽引起的 glitch
-             // 注意：这也会阻止 resize 如果我们误判了。
-             // 但如果句柄不可见，resize 也是危险的/不可见的。
+             // 阻止事件传播和默认行为
+             e.stopImmediatePropagation()
              e.stopPropagation()
-             // e.preventDefault() // 这可能会阻止点击事件传播，导致无法选中？
-             // WaveSurfer 需要 mousedown 来启动拖拽。阻止它应该能防止拖拽。
+             e.preventDefault()
            }
         }
         
-        region.element.addEventListener('mousedown', handleMouseDown) // 使用 capture phase? No, bubbling is fine usually.
-        // 实际上 region 插件内部也在监听 mousedown。我们需要比它先执行或者阻止它。
-        // 如果我们用 capture: true，我们会先捕获。
-        region.element.addEventListener('mousedown', handleMouseDown, { capture: true })
+        // 使用 pointerdown 以覆盖更多设备，并使用 capture 阶段优先捕获
+        region.element.addEventListener('pointerdown', handleMouseDown, { capture: true })
       }
 
       // 添加事件监听器
