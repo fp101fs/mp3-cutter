@@ -133,8 +133,9 @@ export async function detectSilence(
   // Resample to 16kHz mono (VAD requirement)
   const samples = await resampleTo16kHz(audioBuffer);
 
-  // Initialize VAD with CDN paths for ONNX WASM files
+  // Initialize VAD with CDN paths for ONNX WASM and model files
   const vad = await NonRealTimeVAD.new({
+    modelURL: 'https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@0.0.30/dist/silero_vad_legacy.onnx',
     ortConfig: (ort) => {
       ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/';
     },
