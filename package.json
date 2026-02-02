@@ -10,9 +10,7 @@
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",
-    "@ricky0123/vad-web": "^0.0.30",
     "next": "^16.1.6",
-    "onnxruntime-web": "^1.23.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-dropzone": "^14.3.8",

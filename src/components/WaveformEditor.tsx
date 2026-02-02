@@ -10,7 +10,7 @@ import { useAudioStore } from '@/store/audioStore'
 
 import { PlayIcon, PauseIcon, PaintBrushIcon, SunIcon, MoonIcon, SparklesIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
-import { detectSilence, getOptimalTrimPoints, getTotalSilenceDuration } from '@/utils/silenceDetector'
+import { detectSilence, getOptimalTrimPoints, getTotalSilenceDuration, SILENCE_THRESHOLDS } from '@/utils/silenceDetector'
 import type { SilenceRegion, SilenceDetectionResult } from '@/utils/silenceDetector'
 
 import '@/app/WaveformEditor.css'
@@ -1082,7 +1082,8 @@ export default function WaveformEditor({ dictionary }: WaveformEditorProps) {
         return
       }
 
-      const result = await detectSilence(audioBuffer)
+      const thresholdDb = SILENCE_THRESHOLDS[silenceThreshold]
+      const result = await detectSilence(audioBuffer, { thresholdDb })
       silenceResultRef.current = result
 
       // Clear existing silence regions
