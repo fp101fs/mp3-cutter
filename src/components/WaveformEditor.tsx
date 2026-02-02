@@ -154,33 +154,111 @@ const THEMES: WaveformTheme[] = [
 
   },
 
-  {
+    {
 
-    id: 'retro',
+      id: 'retro',
 
-    label: 'Retro LCD',
+      label: 'Retro LCD',
 
-    options: {
+      options: {
 
-      waveColor: '#10b981',
+        waveColor: '#10b981',
 
-      progressColor: '#34d399',
+        progressColor: '#34d399',
 
-      cursorColor: '#064e3b',
+        cursorColor: '#064e3b',
 
-      barWidth: 4,
+        barWidth: 4,
 
-      barGap: 1,
+        barGap: 1,
 
-      barRadius: 0,
+        barRadius: 0,
+
+      },
+
+      background: '#022c22'
 
     },
 
-    background: '#022c22'
+    {
 
-  }
+      id: 'neon-peaks',
 
-]
+      label: 'Neon Peaks',
+
+      options: {
+
+        waveColor: ['#ff0080', '#7928ca'],
+
+        progressColor: '#ffffff',
+
+        cursorColor: '#ffffff',
+
+        barWidth: 0,
+
+        barGap: 0,
+
+        barRadius: 0,
+
+      },
+
+      background: '#0f172a'
+
+    },
+
+    {
+
+      id: 'electric-ocean',
+
+      label: 'Electric Ocean',
+
+      options: {
+
+        waveColor: ['#00dfd8', '#007cf0'],
+
+        progressColor: '#ff0080',
+
+        cursorColor: '#ffffff',
+
+        barWidth: 0,
+
+        barGap: 0,
+
+        barRadius: 0,
+
+      },
+
+      background: '#080c14'
+
+    },
+
+    {
+
+      id: 'cyber-fusion',
+
+      label: 'Cyber Fusion',
+
+      options: {
+
+        waveColor: ['#ff0080', '#7928ca', '#00dfd8', '#007cf0'],
+
+        progressColor: ['#ffffff', '#ff0080'],
+
+        cursorColor: '#00dfd8',
+
+        barWidth: 0,
+
+        barGap: 0,
+
+        barRadius: 0,
+
+      },
+
+      background: '#000000'
+
+    }
+
+  ]
 
 
 
