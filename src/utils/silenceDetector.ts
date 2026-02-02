@@ -133,9 +133,11 @@ export async function detectSilence(
   // Resample to 16kHz mono (VAD requirement)
   const samples = await resampleTo16kHz(audioBuffer);
 
-  // Initialize VAD (model loaded from CDN automatically)
+  // Initialize VAD with CDN paths for ONNX WASM files
   const vad = await NonRealTimeVAD.new({
-    // Use defaults - model is fetched from CDN
+    ortConfig: (ort) => {
+      ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.23.2/dist/';
+    },
   });
 
   // Run detection - collects speech segments
